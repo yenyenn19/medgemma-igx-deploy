@@ -1,0 +1,37 @@
+{
+  "Name": "Tiffany Orthanc",
+  "DicomAet": "ORTHANC",
+  "DicomPort": 4242,
+  "HttpPort": 8042,
+  "RemoteAccessAllowed": true,
+  "AuthenticationEnabled": false,
+
+  "DicomAlwaysAllowEcho": true,
+  "DicomAlwaysAllowFind": true,
+
+"StorageDirectory": "/var/lib/orthanc/db",
+"IndexDirectory": "/var/lib/orthanc/db",
+
+  "DicomModalities": {
+    "AI_ORCHESTRATOR": ["AI_ORCHESTRATOR", "172.18.0.1", 11112],
+    "MONAI_SCP":       ["MONAI_SCP",       "172.18.0.1", 11112]
+  },
+
+  "Plugins": [
+    "/usr/share/orthanc/plugins"
+  ],
+
+  "DicomWeb": {
+    "Enable": true,
+    "Root": "/dicom-web/",
+    "EnableWado": true,
+    "WadoRoot": "/wado",
+    "Host": "localhost",
+    "Ssl": false
+  }, 
+  "CorsEnabled": true,
+  "CorsAllowedOrigins": "*",
+  "CorsAllowedMethods": "GET, POST, PUT, DELETE, OPTIONS",
+  "CorsAllowedHeaders": "Content-Type, Authorization"
+}
+

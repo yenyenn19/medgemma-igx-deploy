@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedGemma DICOM Analyzer</title>
+    
+    <style>
+        /* ========================================================================
+           Global Styles
+           ======================================================================== */
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ========================================================================
+           Header
+           ======================================================================== */
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        /* ========================================================================
+           Main Container
+           ======================================================================== */
+        
+        .container {
+            display: flex;
+            height: calc(100vh - 90px);
+            gap: 0;
+        }
+
+        /* ========================================================================
+           Left Panel - Study List
+           ======================================================================== */
+        
+        .left-panel {
+            width: 350px;
+            background: white;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .search-box {
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .case-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .case-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .case-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .case-item.selected {
+            background: #e7e9ff;
+            border-color: #667eea;
+        }
+
+        .case-item .patient-id {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .case-item .study-desc {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .case-item .series-info {
+            font-size: 12px;
+            color: #999;
+        }
+
+        /* ========================================================================
+           Middle Panel - DICOM Viewer
+           ======================================================================== */
+        
+        .middle-panel {
+            flex: 1;
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .viewer-header {
+            padding: 15px 20px;
+            background: #2a2a2a;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .viewer-info {
+            font-size: 14px;
+        }
+
+        .viewer-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .viewer-controls button {
+            padding: 8px 15px;
+            background: #444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.2s;
+        }
+
+        .viewer-controls button:hover {
+            background: #555;
+        }
+
+        .viewer-canvas {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .viewer-canvas img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .slice-slider {
+            padding: 20px;
+            background: #2a2a2a;
+            color: white;
+        }
+
+        .slice-slider input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #444;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slice-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .slice-slider-label {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .empty-viewer {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+        }
+
+        .empty-viewer svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        /* ========================================================================
+           Right Panel - Analysis
+           ======================================================================== */
+        
+        .right-panel {
+            width: 400px;
+            background: white;
+            border-left: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .prompt-section {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .prompt-section label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .prompt-section textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .prompt-section textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .slice-options {
+            margin-top: 15px;
+        }
+
+        .slice-options label {
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .slice-options select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+
+        .analyze-button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .analyze-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .analyze-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-section {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        /* ========================================================================
+           Result Display Components
+           ======================================================================== */
+        
+        .result-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .result-box .timing {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .result-box .content {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #333;
+            white-space: pre-wrap;
+        }
+
+        /* Formatted content styles */
+        .formatted-content {
+            white-space: normal !important;
+        }
+
+        .formatted-content p {
+            margin: 12px 0;
+        }
+
+        .formatted-content .slice-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 15px;
+            margin: 20px 0 15px 0;
+        }
+
+        .formatted-content .slice-header:first-child {
+            margin-top: 0;
+        }
+
+        .formatted-content .bullet-point {
+            padding-left: 20px;
+            margin: 8px 0;
+            line-height: 1.5;
+        }
+
+        .formatted-content .section-divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #e0e0e0, transparent);
+            margin: 25px 0;
+        }
+
+        .formatted-content .disclaimer {
+            background: #fff5e6;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .formatted-content strong {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        /* ========================================================================
+           Status Components
+           ======================================================================== */
+        
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .analyzing {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .error-box {
+            background: #fff5f5;
+            border: 1px solid #feb2b2;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .success-box {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- ========================================================================
+         Header
+         ======================================================================== -->
+    
+    <div class="header">
+        <h1>🏥 MedGemma DICOM Analyzer</h1>
+        <p>AI-Powered Medical Image Analysis with Orthanc Integration</p>
+    </div>
+
+    <!-- ========================================================================
+         Main Container
+         ======================================================================== -->
+    
+    <div class="container">
+        
+        <!-- ====================================================================
+             Left Panel: Study List
+             ==================================================================== -->
+        
+        <div class="left-panel">
+            <div class="panel-header">📋 Available Studies</div>
+            
+            <div class="search-box">
+                <input type="text" 
+                       id="searchInput" 
+                       placeholder="Search by Patient ID or Study Description...">
+            </div>
+            
+            <div class="case-list" id="caseList">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading studies from Orthanc...
+                </div>
+            </div>
+        </div>
+
+        <!-- ====================================================================
+             Middle Panel: DICOM Viewer
+             ==================================================================== -->
+        
+        <div class="middle-panel">
+            <div class="viewer-header">
+                <div class="viewer-info" id="viewerInfo">No study selected</div>
+                <div class="viewer-controls">
+                    <button onclick="previousSlice()">◀ Previous</button>
+                    <button onclick="nextSlice()">Next ▶</button>
+                </div>
+            </div>
+            
+            <div class="viewer-canvas" id="viewerCanvas">
+                <div class="empty-viewer">
+                    <svg fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"></path>
+                    </svg>
+                    <p>Select a study from the left to view images</p>
+                </div>
+            </div>
+            
+            <div class="slice-slider" id="sliceSlider" style="display: none;">
+                <input type="range" 
+                       id="sliceRange" 
+                       min="0" 
+                       max="0" 
+                       value="0" 
+                       oninput="changeSlice(this.value)">
+                <div class="slice-slider-label">
+                    Slice: <span id="currentSlice">0</span> / <span id="totalSlices">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====================================================================
+             Right Panel: Analysis
+             ==================================================================== -->
+        
+        <div class="right-panel">
+            <div class="panel-header">💬 Analysis Prompt</div>
+            
+            <div class="prompt-section">
+                <label>Enter your question:</label>
+                <textarea id="promptInput" 
+                          placeholder="e.g., Describe any liver lesions or masses. What is the type of liver tumor?"></textarea>
+                
+                <div class="slice-options">
+                    <label>Number of slices to analyze:</label>
+                    <select id="sliceCount">
+                        <option value="3">3 slices (Quick - ~30s)</option>
+                        <option value="5" selected>5 slices (Balanced - ~50s)</option>
+                        <option value="10">10 slices (Thorough - ~100s)</option>
+                        <option value="999">All slices (Comprehensive - several minutes)</option>
+                    </select>
+                </div>
+
+                <button class="analyze-button" 
+                        id="analyzeButton" 
+                        onclick="analyzeStudy()" 
+                        disabled>
+                    Select a study to analyze
+                </button>
+            </div>
+
+            <div class="results-section" id="resultsSection">
+                <div style="text-align: center; color: #999; padding: 40px 20px;">
+                    Analysis results will appear here
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================
+         JavaScript Application
+         ======================================================================== -->
+    
+    <script>
+        // ====================================================================
+        // Configuration
+        // ====================================================================
+        
+        const CONFIG = {
+            ORTHANC_URL: 'http://99.64.152.81:5000/orthanc',
+            MEDGEMMA_URL: 'http://99.64.152.81:8080',
+            FETCH_TIMEOUT: 30000,
+            ANALYSIS_TIMEOUT: 600000  // 10 minutes
+        };
+
+        // ====================================================================
+        // Application State
+        // ====================================================================
+        
+        const state = {
+            currentSeries: null,
+            currentInstances: [],
+            currentSliceIndex: 0,
+            allStudies: []
+        };
+
+        // ====================================================================
+        // Initialization
+        // ====================================================================
+        
+        window.onload = () => {
+            loadStudies();
+            initializeEventListeners();
+        };
+
+        function initializeEventListeners() {
+            // Search functionality
+            document.getElementById('searchInput').addEventListener('input', handleSearch);
+        }
+
+        // ====================================================================
+        // Study Management
+        // ====================================================================
+        
+        async function loadStudies() {
+            try {
+                const response = await fetch(`${CONFIG.ORTHANC_URL}/studies`);
+                const studyIds = await response.json();
+                
+                const caseList = document.getElementById('caseList');
+                
+                if (studyIds.length === 0) {
+                    caseList.innerHTML = '<div class="loading">No studies found in Orthanc</div>';
+                    return;
+                }
+
+                caseList.innerHTML = '';
+                state.allStudies = [];
+
+                // Fetch details for each study
+                for (const studyId of studyIds) {
+                    const studyResponse = await fetch(`${CONFIG.ORTHANC_URL}/studies/${studyId}`);
+                    const study = await studyResponse.json();
+                    
+                    const tags = study.MainDicomTags || {};
+                    const patientTags = study.PatientMainDicomTags || {};
+                    
+                    state.allStudies.push({
+                        studyId: studyId,
+                        patientId: patientTags.PatientID || 'Unknown',
+                        patientName: patientTags.PatientName || 'Unknown',
+                        studyDescription: tags.StudyDescription || 'No description',
+                        studyDate: tags.StudyDate || '',
+                        series: study.Series || []
+                    });
+                }
+
+                displayStudies(state.allStudies);
+                
+            } catch (error) {
+                document.getElementById('caseList').innerHTML = 
+                    '<div class="loading" style="color: red;">Error connecting to Orthanc. Make sure it\'s running.</div>';
+                console.error('Error loading studies:', error);
+            }
+        }
+
+        function displayStudies(studies) {
+            const caseList = document.getElementById('caseList');
+            caseList.innerHTML = '';
+
+            studies.forEach(study => {
+                const caseItem = document.createElement('div');
+                caseItem.className = 'case-item';
+                caseItem.onclick = () => selectStudy(study, caseItem);
+                
+                caseItem.innerHTML = `
+                    <div class="patient-id">Patient: ${study.patientId}</div>
+                    <div class="study-desc">${study.studyDescription}</div>
+                    <div class="series-info">${study.series.length} series • ${study.studyDate}</div>
+                `;
+                
+                caseList.appendChild(caseItem);
+            });
+        }
+
+        function handleSearch(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const filtered = state.allStudies.filter(study => 
+                study.patientId.toLowerCase().includes(searchTerm) ||
+                study.studyDescription.toLowerCase().includes(searchTerm)
+            );
+            displayStudies(filtered);
+        }
+
+        async function selectStudy(study, element) {
+            // Update UI
+            document.querySelectorAll('.case-item').forEach(item => item.classList.remove('selected'));
+            element.classList.add('selected');
+
+            // Enable analyze button
+            document.getElementById('analyzeButton').disabled = false;
+            document.getElementById('analyzeButton').textContent = 'Analyze Study';
+
+            // Load first series
+            if (study.series.length > 0) {
+                const seriesId = study.series[0];
+                await loadSeries(seriesId, study);
+            }
+        }
+
+        // ====================================================================
+        // DICOM Viewer
+        // ====================================================================
+        
+        async function loadSeries(seriesId, study) {
+            try {
+                state.currentSeries = seriesId;
+                
+                const response = await fetch(`${CONFIG.ORTHANC_URL}/series/${seriesId}`);
+                const series = await response.json();
+                
+                state.currentInstances = series.Instances || [];
+                
+                if (state.currentInstances.length > 0) {
+                    state.currentSliceIndex = 0;
+                    await loadSlice(state.currentSliceIndex);
+                    
+                    // Update slider
+                    const sliceSlider = document.getElementById('sliceSlider');
+                    sliceSlider.style.display = 'block';
+                    
+                    const sliceRange = document.getElementById('sliceRange');
+                    sliceRange.max = state.currentInstances.length - 1;
+                    sliceRange.value = 0;
+                    
+                    document.getElementById('currentSlice').textContent = '1';
+                    document.getElementById('totalSlices').textContent = state.currentInstances.length;
+                    
+                    document.getElementById('viewerInfo').textContent = 
+                        `${study.patientId} - ${study.studyDescription} (${state.currentInstances.length} slices)`;
+                }
+            } catch (error) {
+                console.error('Error loading series:', error);
+            }
+        }
+
+        async function loadSlice(index) {
+            const viewerCanvas = document.getElementById('viewerCanvas');
+            
+            try {
+                const instanceId = state.currentInstances[index];
+                const imageUrl = `${CONFIG.ORTHANC_URL}/instances/${instanceId}/preview`;
+                
+                viewerCanvas.innerHTML = `<img src="${imageUrl}" alt="DICOM Slice ${index + 1}">`;
+                
+                document.getElementById('currentSlice').textContent = index + 1;
+            } catch (error) {
+                console.error('Error loading slice:', error);
+            }
+        }
+
+        function changeSlice(value) {
+            state.currentSliceIndex = parseInt(value);
+            loadSlice(state.currentSliceIndex);
+        }
+
+        function previousSlice() {
+            if (state.currentSliceIndex > 0) {
+                state.currentSliceIndex--;
+                document.getElementById('sliceRange').value = state.currentSliceIndex;
+                loadSlice(state.currentSliceIndex);
+            }
+        }
+
+        function nextSlice() {
+            if (state.currentSliceIndex < state.currentInstances.length - 1) {
+                state.currentSliceIndex++;
+                document.getElementById('sliceRange').value = state.currentSliceIndex;
+                loadSlice(state.currentSliceIndex);
+            }
+        }
+
+        // ====================================================================
+        // AI Analysis
+        // ====================================================================
+        
+        async function analyzeStudy() {
+            if (!state.currentSeries) {
+                alert('Please select a study first');
+                return;
+            }
+
+            const prompt = document.getElementById('promptInput').value;
+            const numSlices = parseInt(document.getElementById('sliceCount').value);
+            const resultsSection = document.getElementById('resultsSection');
+            const analyzeButton = document.getElementById('analyzeButton');
+
+            // Disable button and show loading
+            analyzeButton.disabled = true;
+            analyzeButton.textContent = 'Analyzing...';
+            
+            const startTime = Date.now();
+            let timerInterval;
+            
+            // Show progress with live timer
+            resultsSection.innerHTML = `
+                <div class="analyzing">
+                    <div class="spinner"></div>
+                    <p>Analyzing ${numSlices === 999 ? 'all' : numSlices} slices...</p>
+                    <p style="font-size: 14px; font-weight: 600; margin-top: 15px; color: #667eea;">
+                        ⏱️ Elapsed: <span id="elapsedTime">0s</span>
+                    </p>
+                    <p style="font-size: 12px; margin-top: 10px;">Check Terminal 1 for detailed progress.</p>
+                </div>
+            `;
+            
+            // Start timer
+            timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+                
+                const timeElement = document.getElementById('elapsedTime');
+                if (timeElement) {
+                    timeElement.textContent = timeStr;
+                }
+            }, 1000);
+
+            try {
+                const response = await fetch(`${CONFIG.MEDGEMMA_URL}/series/predict`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        series_id: state.currentSeries,
+                        prompt: prompt,
+                        num_slices: numSlices
+                    })
+                });
+
+                clearInterval(timerInterval);
+                
+                const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(0);
+                const minutes = Math.floor(elapsedTime / 60);
+                const seconds = elapsedTime % 60;
+                const timeString = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+                if (response.ok) {
+                    const result = await response.json();
+                    const prediction = result.predictions[0];
+                    
+                    // Format the content
+                    const formattedContent = formatAnalysisContent(prediction.content);
+                    
+                    resultsSection.innerHTML = `
+                        <div class="success-box">
+                            ✓ Analysis complete!
+                        </div>
+                        <div class="result-box">
+                            <div class="timing">
+                                ⏱️ Total Time: ${timeString} | 
+                                Slices analyzed: ${prediction.slices_analyzed} / ${prediction.total_slices} | 
+                                Average: ${(elapsedTime / prediction.slices_analyzed).toFixed(1)}s per slice
+                            </div>
+                            <div class="content formatted-content">${formattedContent}</div>
+                        </div>
+                    `;
+                } else {
+                    const error = await response.text();
+                    resultsSection.innerHTML = `
+                        <div class="error-box">
+                            ❌ Error: ${error}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                clearInterval(timerInterval);
+                
+                resultsSection.innerHTML = `
+                    <div class="error-box">
+                        ❌ Error connecting to MedGemma server: ${error.message}
+                        <br><br>
+                        Make sure the server is running on port 8080.
+                    </div>
+                `;
+            } finally {
+                analyzeButton.disabled = false;
+                analyzeButton.textContent = 'Analyze Study';
+            }
+        }
+
+        // ====================================================================
+        // Content Formatting
+        // ====================================================================
+        
+        function formatAnalysisContent(content) {
+            return content
+                // Convert instance headers
+                .replace(/^Instance (\d+):$/gm, '<div class="slice-header">📊 Slice $1</div>')
+                // Convert bullet points with bold
+                .replace(/^\*   \*\*([^:]+):\*\*(.+)$/gm, '<div class="bullet-point"><strong>$1:</strong>$2</div>')
+                // Convert simple bullet points
+                .replace(/^\*   (.+)$/gm, '<div class="bullet-point">• $1</div>')
+                // Convert bold text
+                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                // Convert section dividers
+                .replace(/^-{60,}$/gm, '<div class="section-divider"></div>')
+                // Convert disclaimer
+                .replace(/\*\*Disclaimer:\*\*(.+?)(?=<div class="section-divider">|$)/gs, 
+                         '<div class="disclaimer"><strong>Disclaimer:</strong>$1</div>')
+                // Clean up whitespace
+                .replace(/\n{3,}/g, '\n\n')
+                // Convert to paragraphs
+                .split('\n\n')
+                .map(para => para.trim() ? `<p>${para.replace(/\n/g, '<br>')}</p>` : '')
+                .join('');
+        }
+    </script>
+</body>
+</html>
