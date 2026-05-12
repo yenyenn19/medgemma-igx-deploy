@@ -7,12 +7,13 @@ Enables browser-based applications to access Orthanc without CORS restrictions
 from flask import Flask, request, Response
 from flask_cors import CORS
 import requests
+import os
 
 # =============================================================================
 # Configuration
 # =============================================================================
 
-ORTHANC_URL = "http://localhost:8042"
+ORTHANC_URL = os.environ.get("ORTHANC_URL", "http://localhost:8042")
 PROXY_PORT = 5000
 REQUEST_TIMEOUT = 30  # seconds
 
