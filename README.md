@@ -1,105 +1,189 @@
-## 🚀 Quick Start
+## MedGemma DICOM Analyzer — IGX Deployment
+AI-powered medical image analysis pipeline deployed on NVIDIA IGX Orin.  
+Analyzes DICOM series using MedGemma multimodal model with a fully on-premises setup — patient data never leaves the server.
 
-### Prerequisites
+## Architecture
+ 
+```
+Browser (Web UI)
+    ↓
+CORS Proxy (port 5001)          MedGemma Server (port 8080)
+    ↓                                   ↓
+Orthanc PACS (port 8042)        Gemma4 API Server (port 5000)
+                                        ↓
+                                  GPU Inference (RTX 6000 Ada)
+```
+| Service | Port | Description |
+|---|---|---|
+| Orthanc PACS | 8042 | DICOM storage and REST API |
+| MedGemma Server | 8080 | DICOM preprocessing + API proxy |
+| Gemma4 API Server | 5000 | vLLM / HF inference engine |
+| CORS Proxy | 5001 | Browser-to-Orthanc bridge |
 
-- NVIDIA IGX Orin or similar ARM64 device with NVIDIA GPU
-- Docker with NVIDIA Container Toolkit
-- Python 3.10+
-- CUDA 12.2+
-- Hugging Face account and token
+## Hardware
 
-### Installation
+| Component | Specification |
+|---|---|
+| Platform | NVIDIA IGX Orin |
+| GPU | NVIDIA RTX 6000 Ada Generation (48 GB VRAM) |
+| CPU | 12-core Arm Cortex-A78AE |
+| RAM | 64 GB LPDDR5 |
+| Storage | NVMe SSD |
+| Architecture | ARM64 |
+---
 
-1. **Clone the repository**
+## Prerequisites
+ 
+### 1. Gemma4 API Server
+This pipeline requires the Gemma4 API Server running on port 5000.  
+Set it up first: https://github.com/Kaiwei0323/gemma4-api-server
+ 
+Once running, note the server IP address before proceeding.
+
+### 2. Model Checkpoint
+Download MedGemma 4B from HuggingFace (requires account and model access approval):
+ 
 ```bash
-git clone https://github.com/YOUR_USERNAME/medgemma-igx-deploy.git
+docker run --rm \
+  -v $(pwd)/medgemma-4b-it:/model \
+  python:3.11-slim \
+  bash -c "pip install huggingface_hub -q && python3 -c \"
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id='google/medgemma-4b-it',
+    local_dir='/model',
+    token='YOUR_HF_TOKEN'
+)
+\""
+```
+ 
+---
+
+## Setup
+ 
+### Step 1: Clone this repo
+ 
+```bash
+git clone https://github.com/yenyenn19/medgemma-igx-deploy.git
 cd medgemma-igx-deploy
 ```
 
-2. **Set up Hugging Face token**
+### Step 2: Prepare DICOM Data & Start Orthanc
+ 
+Create the data directory:
+ 
 ```bash
-mkdir -p ~/.cache/huggingface
-echo "YOUR_HF_TOKEN" > ~/.cache/huggingface/token
+mkdir -p data/orthanc-db
 ```
-
-3. **Start Orthanc PACS**
+ 
+> Place your DICOM files (`.dcm`) inside `data/orthanc-db/` before starting Orthanc. Orthanc will automatically index them on startup. 
+ 
 ```bash
-docker network create medgemma-net
-
 docker run -d \
-  --network medgemma-net \
   --name orthanc \
-  -p 4242:4242 \
   -p 8042:8042 \
-  -v $(pwd)/data/orthanc-db:/var/lib/orthanc/db \
-  -v $(pwd)/orthanc.json:/etc/orthanc/orthanc.json:ro \
-  orthancteam/orthanc
+  -p 4242:4242 \
+  -v ~/Documents/medgemma_deploy/data/orthanc-db:/var/lib/orthanc/db \
+  orthancteam/orthanc:latest
 ```
-
-4. **Build and start MedGemma server**
+ 
+Verify Orthanc is running:
 ```bash
-docker build -t medgemma-gpu .
-
-docker run --gpus all -d \
-  --network medgemma-net \
-  --ipc=host \
+curl http://orthanc:orthanc@localhost:8042/system
+```
+ 
+Verify DICOM data is loaded:
+```bash
+curl http://orthanc:orthanc@localhost:8042/series
+```
+ 
+ 
+### Step 3: Start MedGemma Server
+ 
+```bash
+docker build -t medgemma-server .
+ 
+docker run -d \
   --name medgemma-server \
   -p 8080:8080 \
-  -e HF_TOKEN="$(cat ~/.cache/huggingface/token)" \
-  medgemma-gpu
+  -e GEMMA_API_URL=http://<gemma4-api-server-ip>:5000 \
+  -e PYTHONUNBUFFERED=1 \
+  medgemma-server
+```
+Verify:
+```bash
+curl http://localhost:8080/health
 ```
 
-5. **Start CORS proxy and Web UI**
+### Step 4: Start CORS Proxy
+ 
 ```bash
-# Terminal 1: CORS Proxy
-python3 cors_proxy.py
-
-# Terminal 2: Web UI
+docker build -t cors-proxy -f Dockerfile.cors .
+ 
+docker run -d \
+  --name cors-proxy \
+  -p 5001:5000 \
+  -e ORTHANC_URL=http://orthanc:orthanc@<orthanc-ip>:8042 \
+  cors-proxy
+```
+ 
+Verify:
+```bash
+curl http://localhost:5001/orthanc/studies
+```
+ 
+### Step 5: Configure Web UI
+ 
+Edit `medgemma_ui.html` and update the CONFIG section with your IGX IP:
+ 
+```javascript
+const CONFIG = {
+    ORTHANC_URL: 'http://<IGX-IP>:5001/orthanc',
+    MEDGEMMA_URL: 'http://<IGX-IP>:8080',
+};
+```
+ 
+Also update the `orthanc_url` in the `analyzeStudy()` function:
+ 
+```javascript
+body: JSON.stringify({
+    series_id: state.currentSeries,
+    prompt: prompt,
+    num_slices: numSlices,
+    orthanc_url: 'http://orthanc:orthanc@<orthanc-ip>:8042'
+})
+```
+### Step 6: Open Web UI
+ 
+```bash
 python3 -m http.server 8888
 ```
+ 
+Open browser: `http://<IGX-IP>:8888/medgemma_ui.html`
+ 
+---
 
-6. **Access the interface**
-```
-http://localhost:8888/medgemma_ui.html
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
+ 
+## API Usage
+ 
+Analyze a DICOM series directly via curl:
+ 
 ```bash
-# Hugging Face token for model access
-HF_TOKEN=your_token_here
-
-# Model configuration
-MODEL_NAME=google/medgemma-4b-it
-ORTHANC_URL=http://orthanc:8042
-
-# Server ports
-MEDGEMMA_PORT=8080
-CORS_PROXY_PORT=5000
-WEB_UI_PORT=8888
-ORTHANC_WEB_PORT=8042
-ORTHANC_DICOM_PORT=4242
+curl -X POST http://localhost:8080/series/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "series_id": "your-series-uuid",
+    "prompt": "Describe any abnormalities.",
+    "num_slices": 5,
+    "orthanc_url": "http://orthanc:orthanc@<orthanc-ip>:8042"
+  }'
 ```
-
-### Orthanc Configuration
-
-Edit `orthanc.json` to configure:
-- Storage location
-- DICOM network settings
-- Web authentication
-- Plugins
-
-## 🐳 Docker Images
-
-### Base Images Used
-
-- **Orthanc:** `orthancteam/orthanc` (ARM64 compatible)
-- **MedGemma:** `nvcr.io/nvidia/pytorch:26.01-py3` (PyTorch 2.10, CUDA 13.1)
-
-### Building Custom Image
-
+ 
+Get a list of available series from Orthanc:
+ 
 ```bash
-docker build -t medgemma-gpu -f Dockerfile .
+curl http://orthanc:orthanc@localhost:8042/series
 ```
+ 
+---
+ 
